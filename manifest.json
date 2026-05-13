@@ -1,0 +1,96 @@
+{
+  "manifest_version": "0.3",
+  "name": "simrelay-mcp",
+  "display_name": "SimRelay",
+  "version": "2.0.10",
+  "description": "List SIMs (grouped by team, with lock status), lock/release them, fetch SMS history, and stream or synchronously wait for incoming SMS via SimRelay.",
+  "long_description": "## SimRelay for AI agents\n\nThis extension lets an AI assistant work with your SimRelay account:\n\n- List every SIM you can access, **grouped by team**, with lock status (unlocked, or locked by whom and until when) and per-organization alias\n- Lock a SIM before reading its messages so other agents/users can't interfere\n- Release the lock when done (idempotent)\n- Read paginated SMS history for any SIM\n- **Synchronously wait** for the next incoming SMS — perfect for OTP-style workflows; the message arrives directly in the conversation\n- Subscribe to a real-time WebSocket stream and pull the most recent N buffered messages on demand\n\n## First-time setup\n\nInstall the extension. The first time the assistant uses any tool, it will ask you to sign in — just say something like \"log me in to SimRelay\" and the assistant will run the `simrelay_login` tool, which opens your browser to SimRelay's sign-in page. After you authorize, tokens are saved to `~/.config/simrelay-mcp/tokens.json` (chmod 0600) and refreshed automatically. You can also sign in proactively at any time.\n\nTo sign out, ask the assistant to run `simrelay_logout`.\n\n## Authentication\n\nOAuth 2.0 Authorization Code + PKCE — the same flow as SimRelay's mobile and Chrome extension clients. Credentials never travel through tool arguments and the token file is created with `0600` permissions on macOS/Linux.\n\n## Tools\n\n- `simrelay_login` / `simrelay_logout` — manage SimRelay sign-in\n- `list_sims` (read-only) — grouped by team, with lock status and alias\n- `lock_sim` (destructive)\n- `release_sim_lock` (idempotent)\n- `get_sim_messages` (read-only, paginated history)\n- `subscribe_to_messages` / `unsubscribe_from_messages` — long-lived WS subscription\n- `wait_for_next_sms` — block until the next matching SMS arrives (default 60s, max 300s)\n- `get_recent_sms` — last N buffered SMS captured since the server started\n- `get_subscription_status` — diagnose WS state and inspect the ring buffer\n\nFull tool reference: see `docs/tools.md` in the source repository.",
+  "author": {
+    "name": "SimRelay MCP contributors",
+    "url": "https://github.com/simrelay/mcp"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/simrelay/mcp"
+  },
+  "homepage": "https://github.com/simrelay/mcp#readme",
+  "documentation": "https://github.com/simrelay/mcp/blob/main/docs/tools.md",
+  "support": "https://github.com/simrelay/mcp/issues",
+  "license": "ISC",
+  "keywords": [
+    "simrelay",
+    "sms",
+    "sim",
+    "phone-numbers",
+    "otp",
+    "mcp"
+  ],
+  "server": {
+    "type": "node",
+    "entry_point": "dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/dist/index.js"
+      ]
+    }
+  },
+  "tools": [
+    {
+      "name": "simrelay_login",
+      "description": "Sign in to SimRelay. Opens the user's default browser to the SimRelay OAuth page; tokens are saved locally and refreshed automatically. Use when the user asks to log in or when other tools fail with 'Not authenticated'."
+    },
+    {
+      "name": "simrelay_logout",
+      "description": "Forget the saved SimRelay tokens. Use when the user asks to sign out or switch accounts."
+    },
+    {
+      "name": "list_sims",
+      "description": "List every SIM the authenticated user can access, grouped by team. Each SIM includes id, phone_number, organization-pivot alias, organization, team, type, messages_received_count, and current lock status (unlocked, or locked-by-user with expiry)."
+    },
+    {
+      "name": "lock_sim",
+      "description": "Acquire an exclusive lock on a SIM by its integer hosted_sim_id so other users/agents cannot send or read on it. Locks auto-expire after a server-configured TTL."
+    },
+    {
+      "name": "release_sim_lock",
+      "description": "Release a previously acquired SIM lock. Idempotent — safe to call even if the lock has already expired."
+    },
+    {
+      "name": "get_sim_messages",
+      "description": "Retrieve historical SMS messages for a SIM, paginated. Returns normalized messages (id, sim_id, direction, from, to, text, received_at) plus pagination metadata."
+    },
+    {
+      "name": "subscribe_to_messages",
+      "description": "Open a WebSocket subscription to SimRelay. Each new incoming SMS is delivered to the MCP client as a logging notification (logger=simrelay-sms) so the assistant can react to OTPs and other inbound messages live. Optional sim_id filter."
+    },
+    {
+      "name": "unsubscribe_from_messages",
+      "description": "Stop the real-time SMS stream. Idempotent."
+    },
+    {
+      "name": "wait_for_next_sms",
+      "description": "Block until the next incoming SMS arrives (optional sim_id filter) and return its payload directly in the tool result. Best for OTP-style flows where the assistant expects a code imminently. Default timeout 60s, max 300s. Auto-starts the WebSocket subscription if needed."
+    },
+    {
+      "name": "get_recent_sms",
+      "description": "Return the N most-recent SMS messages captured by the WebSocket subscription in this server's lifetime (ring buffer, capacity 100). Filter-independent. For persisted history use get_sim_messages instead."
+    },
+    {
+      "name": "get_subscription_status",
+      "description": "Diagnose the realtime subscription: current WebSocket state, channel, active filter, and the latest buffered SMS events. Useful when messages aren't arriving as expected."
+    }
+  ],
+  "tools_generated": false,
+  "compatibility": {
+    "claude_desktop": ">=0.10.0",
+    "platforms": [
+      "darwin",
+      "win32",
+      "linux"
+    ],
+    "runtimes": {
+      "node": ">=20.0.0"
+    }
+  }
+}
