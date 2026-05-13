@@ -1,0 +1,138 @@
+# Public-repo release workflow (simrelay/mcp).
+#
+# This file lives in the private repo under public-overlay/ and is copied
+# into .github/workflows/ during the mirror step. It is what runs in the
+# public repo on `v*` tag arrivals to:
+#   1. Rebuild the prod .mcpb from public source.
+#   2. Publish the npm package via Trusted Publishing (provenance attested).
+#   3. Attach the .mcpb to a public GitHub Release.
+#
+# npm Trusted Publisher binding (configure once on npmjs.com):
+#   Organization: simrelay
+#   Repository:   mcp
+#   Workflow:     release.yml
+#   Environment:  (blank)
+#
+# Required secret on simrelay/mcp:
+#   SIMRELAY_PROD_CLIENT_ID — OAuth client ID (same value as private's secret).
+#
+# Security:
+#   * Triggers on `v*` tag push only — fork PRs cannot reach this workflow.
+#   * Tag pushes are gated by branch protection on `main`; only org members
+#     can cut a release.
+#   * Trust binding is to release.yml only — ci.yml does not have the
+#     OIDC publish token.
+#   * All secrets reach run: scripts only via env: (never direct ${{ }}).
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Manual rebuild: version (e.g. 2.0.0)"
+        required: true
+
+permissions:
+  contents: write
+  id-token: write   # required for npm Trusted Publishing OIDC
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          registry-url: "https://registry.npmjs.org"
+
+      - run: npm ci
+
+      - name: Upgrade npm for Trusted Publishing
+        # Node 20/22 LTS ship with npm 10. Trusted Publishing GA requires
+        # npm 11.5.1+. Upgrade *after* npm ci so the old lockfile installs
+        # cleanly; only `npm publish` below uses the new npm.
+        run: npm install -g npm@latest
+
+      - name: Determine and validate version
+        id: ver
+        env:
+          MANUAL_VERSION: ${{ inputs.version }}
+        run: |
+          set -eu
+          if [[ -n "${MANUAL_VERSION-}" ]]; then
+            VERSION="${MANUAL_VERSION}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.]+)*$ ]]; then
+            echo "Rejecting invalid version: ${VERSION}"
+            exit 1
+          fi
+          if [[ "${VERSION}" == *-* ]]; then
+            NPM_TAG="next"
+            PRERELEASE="true"
+          else
+            NPM_TAG="latest"
+            PRERELEASE="false"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "npm_tag=${NPM_TAG}" >> "$GITHUB_OUTPUT"
+          echo "prerelease=${PRERELEASE}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify package.json version matches tag
+        env:
+          EXPECTED_VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -eu
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [[ "${PKG_VERSION}" != "${EXPECTED_VERSION}" ]]; then
+            echo "package.json version (${PKG_VERSION}) does not match tag (${EXPECTED_VERSION})."
+            exit 1
+          fi
+
+      - name: Inject build config (prod)
+        env:
+          SIMRELAY_OAUTH_CLIENT_ID: ${{ secrets.SIMRELAY_PROD_CLIENT_ID }}
+          BUILD_FLAVOR: prod
+          BUILD_VERSION: ${{ steps.ver.outputs.version }}
+        run: node scripts/inject-build-config.mjs
+
+      - run: npm run build
+      - run: npm test
+
+      - name: Pack .mcpb
+        env:
+          BUNDLE_VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -eu
+          npx -y @anthropic-ai/mcpb pack . "simrelay-mcp-${BUNDLE_VERSION}.mcpb"
+
+      - name: Upload .mcpb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: simrelay-mcp-prod
+          path: "*.mcpb"
+          if-no-files-found: error
+
+      - name: Publish to npm (Trusted Publishing via OIDC)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          NPM_DIST_TAG: ${{ steps.ver.outputs.npm_tag }}
+        run: |
+          set -eu
+          npm publish --provenance --access public --tag "${NPM_DIST_TAG}"
+
+      - name: Attach .mcpb to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: "*.mcpb"
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+          prerelease: ${{ steps.ver.outputs.prerelease == 'true' }}

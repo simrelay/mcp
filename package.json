@@ -1,0 +1,65 @@
+{
+  "name": "simrelay-mcp-server",
+  "version": "2.0.11",
+  "description": "MCP server for SimRelay — list SIMs, lock/release them, fetch message history, and stream incoming SMS in real time over WebSocket.",
+  "main": "dist/server.js",
+  "types": "dist/server.d.ts",
+  "type": "module",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "docs/configuration.md",
+    "docs/tools.md",
+    "docs/realtime.md"
+  ],
+  "bin": {
+    "simrelay-mcp": "./dist/index.js"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "prepublishOnly": "npm run build",
+    "test": "node scripts/run-tests.mjs",
+    "test:watch": "node scripts/run-tests.mjs --watch"
+  },
+  "keywords": [
+    "mcp",
+    "simrelay",
+    "sms",
+    "sim",
+    "phone",
+    "model-context-protocol",
+    "ai-tools"
+  ],
+  "author": "",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/simrelay/mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/simrelay/mcp/issues"
+  },
+  "homepage": "https://github.com/simrelay/mcp#readme",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.16.0",
+    "open": "^10.1.0",
+    "ws": "^8.18.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^24.1.0",
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3"
+  }
+}
